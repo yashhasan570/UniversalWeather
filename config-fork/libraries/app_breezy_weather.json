@@ -1,0 +1,15 @@
+{
+  "uniqueId": "com.universalweather.app:custom",
+  "developers": [
+    {
+      "name": "Universal Weather"
+    }
+  ],
+  "artifactVersion": "",
+  "description": "A Material Design weather application this app was forked from",
+  "name": "Universal Weather App",
+  "website": "https://github.com/yashhasan570/UniversalWeather",
+  "licenses": [
+    "LGPL-3.0-only"
+  ]
+}

@@ -1,0 +1,9 @@
+Universal Weather is a Material Design weather app for Android.
+
+- Detailed current conditions, hourly and daily forecasts
+- Weather alerts and warnings
+- Radar, air quality and pollen information (where available)
+- Home screen widgets and dash clock support
+- Material Design with dark, light and dynamic themes
+
+Contact on Telegram: @johnconstantine570

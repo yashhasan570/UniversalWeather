@@ -1,0 +1,189 @@
+/*
+ * This file is part of Universal Weather.
+ *
+ * Universal Weather is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by the
+ * Free Software Foundation, version 3 of the License.
+ *
+ * Universal Weather is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Universal Weather. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.universalweather.app.background.forecast
+
+import android.app.Notification
+import android.content.Context
+import android.graphics.drawable.Icon
+import androidx.core.app.NotificationCompat
+import com.universalweather.app.domain.location.model.Location
+import com.universalweather.app.domain.weather.model.Daily
+import com.universalweather.app.domain.weather.reference.WeatherCode
+import com.universalweather.app.R
+import com.universalweather.app.common.extensions.cancelNotification
+import com.universalweather.app.common.extensions.formatMeasure
+import com.universalweather.app.common.extensions.notificationBuilder
+import com.universalweather.app.common.extensions.notify
+import com.universalweather.app.common.extensions.toBitmap
+import com.universalweather.app.domain.location.model.isDaylight
+import com.universalweather.app.domain.settings.SettingsManager
+import com.universalweather.app.remoteviews.Notifications
+import com.universalweather.app.remoteviews.presenters.AbstractRemoteViewsPresenter
+import com.universalweather.app.ui.theme.resource.ResourceHelper
+import com.universalweather.app.ui.theme.resource.ResourcesProviderFactory
+import com.universalweather.app.unit.formatting.UnitWidth
+import com.universalweather.app.unit.temperature.TemperatureUnit
+
+class ForecastNotificationNotifier(
+    private val context: Context,
+) {
+
+    private val progressNotificationBuilder = context
+        .notificationBuilder(Notifications.CHANNEL_FORECAST) {
+            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            setSmallIcon(R.drawable.ic_running_in_background)
+            setAutoCancel(false)
+            setOngoing(true)
+            setOnlyAlertOnce(true)
+        }
+
+    private val completeNotificationBuilder = context
+        .notificationBuilder(Notifications.CHANNEL_FORECAST) {
+            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            setAutoCancel(false)
+        }
+
+    fun showProgress(): Notification {
+        return progressNotificationBuilder
+            // prevent Android from muting notifications ('muting recently noisy')
+            // and only play a sound for the actual forecast notification
+            .setSilent(true)
+            .setContentTitle(context.getString(R.string.notification_running_in_background))
+            .build()
+    }
+
+    fun showComplete(location: Location, today: Boolean) {
+        context.cancelNotification(
+            if (today) {
+                Notifications.ID_UPDATING_TODAY_FORECAST
+            } else {
+                Notifications.ID_UPDATING_TOMORROW_FORECAST
+            }
+        )
+
+        val weather = location.weather
+        val daily = weather?.let { (if (today) it.today else it.tomorrow) }
+        if (weather == null || daily == null) {
+            dismiss(today)
+            return
+        }
+
+        val provider = ResourcesProviderFactory.newInstance
+
+        val daytime: Boolean = if (today) location.isDaylight else true
+        val weatherCode: WeatherCode? = if (today) {
+            if (daytime) daily.day?.weatherCode else daily.night?.weatherCode
+        } else {
+            daily.day?.weatherCode
+        }
+        val temperatureUnit = SettingsManager.getInstance(context).getTemperatureUnit(context)
+
+        val notification: Notification = with(completeNotificationBuilder) {
+            priority = NotificationCompat.PRIORITY_MAX
+            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            setSubText(
+                if (today) {
+                    context.getString(R.string.daily_today_short)
+                } else {
+                    context.getString(R.string.daily_tomorrow_short)
+                }
+            )
+            setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+            setAutoCancel(true)
+            setBadgeIconType(NotificationCompat.BADGE_ICON_SMALL)
+            setSmallIcon(ResourceHelper.getDefaultMinimalXmlIconId(weatherCode, daytime))
+            weatherCode?.let {
+                setLargeIcon(ResourceHelper.getWeatherIcon(provider, it, daytime).toBitmap())
+            }
+
+            setContentTitle(getDayString(daily, temperatureUnit))
+            setContentText(getNightString(daily, temperatureUnit))
+            setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(
+                        getDayString(daily, temperatureUnit) +
+                            "\n\n" +
+                            getNightString(daily, temperatureUnit)
+                    )
+                    // do not show any title when expanding the notification
+                    .setBigContentTitle("")
+            )
+            setContentIntent(
+                AbstractRemoteViewsPresenter.getWeatherPendingIntent(
+                    context,
+                    null,
+                    if (today) {
+                        Notifications.ID_TODAY_FORECAST
+                    } else {
+                        Notifications.ID_TOMORROW_FORECAST
+                    }
+                )
+            )
+        }.build()
+
+        if (weather.current?.weatherCode != null) {
+            try {
+                notification.javaClass
+                    .getMethod("setSmallIcon", Icon::class.java)
+                    .invoke(
+                        notification,
+                        ResourceHelper.getMinimalIcon(
+                            provider,
+                            weather.current!!.weatherCode!!,
+                            daytime
+                        )
+                    )
+            } catch (_: Exception) {
+                // do nothing.
+            }
+        }
+
+        dismiss(today)
+        context.notify(
+            if (today) Notifications.ID_TODAY_FORECAST else Notifications.ID_TOMORROW_FORECAST,
+            notification
+        )
+    }
+
+    fun dismiss(today: Boolean) {
+        context.cancelNotification(
+            if (today) Notifications.ID_TODAY_FORECAST else Notifications.ID_TOMORROW_FORECAST
+        )
+    }
+
+    private fun getDayString(daily: Daily, temperatureUnit: TemperatureUnit) =
+        context.getString(R.string.daytime) +
+            context.getString(R.string.colon_separator) +
+            daily.day?.temperature?.temperature?.formatMeasure(
+                context,
+                temperatureUnit,
+                valueWidth = UnitWidth.NARROW
+            ) +
+            context.getString(R.string.dot_separator) +
+            daily.day?.weatherText
+
+    private fun getNightString(daily: Daily, temperatureUnit: TemperatureUnit) =
+        context.getString(R.string.nighttime) +
+            context.getString(R.string.colon_separator) +
+            daily.night?.temperature?.temperature?.formatMeasure(
+                context,
+                temperatureUnit,
+                valueWidth = UnitWidth.NARROW
+            ) +
+            context.getString(R.string.dot_separator) +
+            daily.night?.weatherText
+}

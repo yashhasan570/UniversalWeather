@@ -1,0 +1,28 @@
+name: Sync from upstream
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pull upstream and reapply branding
+        run: |
+          git clone --depth 1 https://github.com/breezy-weather/breezy-weather /tmp/upstream
+          rsync -a --delete --exclude .git --exclude .github/workflows/sync.yml --exclude scripts --exclude gradle.properties /tmp/upstream/ ./
+          python3 scripts/migrate.py .
+      - name: Commit and push
+        run: |
+          git config user.name "yashhasan570"
+          git config user.email "hasankhalid700570@gmail.com"
+          git add -A
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Sync from upstream and reapply Universal Weather branding"
+          git push
