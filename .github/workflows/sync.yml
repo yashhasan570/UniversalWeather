@@ -16,7 +16,7 @@ jobs:
       - name: Pull upstream and reapply branding
         run: |
           git clone --depth 1 https://github.com/breezy-weather/breezy-weather /tmp/upstream
-          rsync -a --delete --exclude .git --exclude .github/workflows/sync.yml --exclude scripts --exclude gradle.properties /tmp/upstream/ ./
+          rsync -a --delete --exclude .git --exclude .github --exclude scripts --exclude gradle.properties /tmp/upstream/ ./
           python3 scripts/migrate.py .
       - name: Commit and push
         run: |
